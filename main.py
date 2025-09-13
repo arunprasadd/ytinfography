@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.formatters import TextFormatter
-import requests
+from youtube_transcript_api.proxies import WebshareProxyConfig
 import re
 from typing import Optional, List
 
@@ -45,32 +45,16 @@ def get_youtube_transcript_api():
     """Initialize YouTube Transcript API with proxy configuration"""
     PROXY_USERNAME = "labvizce99-21"
     PROXY_PASSWORD = "x2za3x15c9ah"
-    PROXY_ENDPOINT = "p.webshare.io:80"
 
     try:
-        # Configure proxy for requests session
-        proxies = {
-            "http": "http://labvizce99-21:x2za3x15c9ah@p.webshare.io:80/",
-            "https": "http://labvizce99-21:x2za3x15c9ah@p.webshare.io:80/"
-        }
-
-        # Monkey patch requests to use proxy
-        original_get = requests.get
-        original_post = requests.post
-
-        def proxied_get(*args, **kwargs):
-            kwargs.setdefault('proxies', proxies)
-            return original_get(*args, **kwargs)
-
-        def proxied_post(*args, **kwargs):
-            kwargs.setdefault('proxies', proxies)
-            return original_post(*args, **kwargs)
-
-        requests.get = proxied_get
-        requests.post = proxied_post
-
-        ytt_api = YouTubeTranscriptApi()
-        proxy_status = f"✅ Proxy configured: p.webshare.io:80"
+        ytt_api = YouTubeTranscriptApi(
+            proxy_config=WebshareProxyConfig(
+                proxy_username=PROXY_USERNAME,
+                proxy_password=PROXY_PASSWORD,
+                filter_ip_locations=["de", "us"]
+            )
+        )
+        proxy_status = "✅ Proxy configured: WebShare"
         return ytt_api, proxy_status
     except Exception as e:
         ytt_api = YouTubeTranscriptApi()
@@ -98,7 +82,7 @@ async def get_transcript(request: TranscriptRequest):
         video_id = extract_video_id(request.video_url)
         ytt_api, proxy_status = get_youtube_transcript_api()
 
-        transcript_list = ytt_api.get_transcript(video_id, languages=request.languages)
+        transcript_list = ytt_api.fetch(video_id, languages=request.languages)
 
         formatter = TextFormatter()
         transcript_text = formatter.format_transcript(transcript_list)
@@ -124,7 +108,7 @@ async def get_transcript_by_id(video_id: str, languages: Optional[str] = "en"):
         language_list = languages.split(",") if languages else ["en"]
         ytt_api, proxy_status = get_youtube_transcript_api()
 
-        transcript_list = ytt_api.get_transcript(video_id, languages=language_list)
+        transcript_list = ytt_api.fetch(video_id, languages=language_list)
 
         formatter = TextFormatter()
         transcript_text = formatter.format_transcript(transcript_list)
