@@ -41,6 +41,19 @@ def extract_video_id(url: str) -> str:
 
     raise ValueError("Invalid YouTube URL")
 
+def clean_transcript_text(text: str) -> str:
+    """Clean transcript text by removing newlines and extra whitespace"""
+    if not text:
+        return text
+
+    # Replace newlines with spaces
+    cleaned = text.replace('\n', ' ')
+
+    # Replace multiple spaces with single spaces
+    cleaned = ' '.join(cleaned.split())
+
+    return cleaned
+
 def get_youtube_transcript_api():
     """Initialize YouTube Transcript API with proxy configuration"""
     PROXY_USERNAME = "labvizce99-21"
@@ -87,11 +100,14 @@ async def get_transcript(request: TranscriptRequest):
         formatter = TextFormatter()
         transcript_text = formatter.format_transcript(transcript_list)
 
+        # Clean the transcript text
+        cleaned_transcript = clean_transcript_text(transcript_text)
+
         detected_language = request.languages[0] if request.languages else "en"
 
         return TranscriptResponse(
             video_id=video_id,
-            transcript=transcript_text,
+            transcript=cleaned_transcript,
             language=detected_language,
             proxy_status=proxy_status
         )
@@ -113,9 +129,12 @@ async def get_transcript_by_id(video_id: str, languages: Optional[str] = "en"):
         formatter = TextFormatter()
         transcript_text = formatter.format_transcript(transcript_list)
 
+        # Clean the transcript text
+        cleaned_transcript = clean_transcript_text(transcript_text)
+
         return TranscriptResponse(
             video_id=video_id,
-            transcript=transcript_text,
+            transcript=cleaned_transcript,
             language=language_list[0],
             proxy_status=proxy_status
         )
