@@ -32,12 +32,14 @@ class TranscriptResponse(BaseModel):
 class InfographicRequest(BaseModel):
     video_url: str
     languages: Optional[List[str]] = ["en"]
+    num_points: Optional[int] = 5
 
 class InfographicResponse(BaseModel):
     video_id: str
     infographic_points: List[str]
     language: str
     proxy_status: str
+    num_points: int
 
 def extract_video_id(url: str) -> str:
     """Extract video ID from YouTube URL"""
@@ -66,28 +68,34 @@ def clean_transcript_text(text: str) -> str:
 
     return cleaned
 
-def generate_infographic_summary(transcript_text: str) -> List[str]:
-    """Generate 5 infographic points from transcript using Google Gemini 1.5"""
+def generate_infographic_summary(transcript_text: str, num_points: int = 5) -> List[str]:
+    """Generate infographic points from transcript using Google Gemini 1.5"""
     OPENROUTER_API_KEY = "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"
+
+    # Validate num_points
+    if num_points < 1 or num_points > 10:
+        num_points = 5
 
     # Truncate text if too long (keep within token limits)
     if len(transcript_text) > 8000:
         transcript_text = transcript_text[:8000] + "..."
 
-    prompt = f"""Analyze this YouTube video transcript and create exactly 5 concise infographic points that capture the most important information. Each point should be:
+    prompt = f"""You are an expert content summarizer. Analyze this YouTube video transcript and create exactly {num_points} high-quality summary points that capture the most important and actionable information.
 
-1. Self-contained and complete
-2. Suitable for visual presentation in an infographic
-3. Maximum 20 words each
-4. Focus on key insights, facts, or takeaways
-5. Written in clear, engaging language
+REQUIREMENTS for each point:
+• Be a complete, standalone statement (not dependent on other points)
+• Focus on key insights, main ideas, facts, or actionable takeaways
+• Use clear, engaging, and professional language
+• Maximum 25 words per point
+• Avoid repetition between points
+• Make it informative and valuable to readers
 
-Format your response as exactly 5 numbered points (1-5), one per line.
+FORMAT: Return exactly {num_points} points, each on a separate line, numbered 1-{num_points}.
 
-Transcript:
+TRANSCRIPT:
 {transcript_text}
 
-Infographic Points:"""
+SUMMARY POINTS:"""
 
     try:
         response = requests.post(
@@ -128,37 +136,39 @@ Infographic Points:"""
                     if cleaned_point:
                         points.append(cleaned_point)
 
-            # Ensure we have exactly 5 points
-            if len(points) >= 5:
-                return points[:5]
+            # Ensure we have exactly the requested number of points
+            if len(points) >= num_points:
+                return points[:num_points]
             elif len(points) > 0:
-                # If we have fewer than 5, pad with the content
-                while len(points) < 5 and len(points) < len(lines):
+                # If we have fewer than requested, pad with the content
+                while len(points) < num_points and len(points) < len(lines):
                     for line in lines:
                         line = line.strip()
                         if line and line not in points:
                             points.append(line)
-                            if len(points) >= 5:
+                            if len(points) >= num_points:
                                 break
-                return points[:5]
+                return points[:num_points]
             else:
                 # Fallback: split content into sentences
                 sentences = [s.strip() for s in content.split('.') if s.strip()]
-                return sentences[:5] if len(sentences) >= 5 else sentences
+                return sentences[:num_points] if len(sentences) >= num_points else sentences
         else:
             raise Exception(f"OpenRouter API error: {response.status_code}")
 
     except Exception as e:
         # Fallback: create simple points from transcript
         sentences = [s.strip() for s in transcript_text.split('.') if s.strip() and len(s.strip()) > 20]
-        fallback_points = [
-            f"Video discusses: {sentences[0][:50]}..." if len(sentences) > 0 else "Video content analyzed",
-            f"Key point: {sentences[1][:50]}..." if len(sentences) > 1 else "Multiple topics covered",
-            f"Important detail: {sentences[2][:50]}..." if len(sentences) > 2 else "Educational content provided",
-            f"Notable mention: {sentences[3][:50]}..." if len(sentences) > 3 else "Informative discussion",
-            f"Summary: Video provides valuable insights and information"
-        ]
-        return fallback_points[:5]
+        fallback_points = []
+
+        # Create fallback points based on requested number
+        for i in range(num_points):
+            if i < len(sentences):
+                fallback_points.append(f"Key point {i+1}: {sentences[i][:50]}...")
+            else:
+                fallback_points.append(f"Video provides valuable insights and information (point {i+1})")
+
+        return fallback_points[:num_points]
 
 def get_youtube_transcript_api():
     """Initialize YouTube Transcript API with proxy configuration"""
@@ -250,8 +260,13 @@ async def get_transcript_by_id(video_id: str, languages: Optional[str] = "en"):
 
 @app.post("/infographic", response_model=InfographicResponse)
 async def generate_infographic(request: InfographicRequest):
-    """Generate 5 infographic points from a YouTube video transcript"""
+    """Generate configurable number of summary points from a YouTube video transcript"""
     try:
+        # Validate num_points
+        num_points = request.num_points or 5
+        if num_points < 1 or num_points > 10:
+            raise HTTPException(status_code=400, detail="num_points must be between 1 and 10")
+
         video_id = extract_video_id(request.video_url)
         ytt_api, proxy_status = get_youtube_transcript_api()
 
@@ -265,7 +280,7 @@ async def generate_infographic(request: InfographicRequest):
         cleaned_transcript = clean_transcript_text(transcript_text)
 
         # Generate infographic points using Gemini 1.5
-        infographic_points = generate_infographic_summary(cleaned_transcript)
+        infographic_points = generate_infographic_summary(cleaned_transcript, num_points)
 
         detected_language = request.languages[0] if request.languages else "en"
 
@@ -273,7 +288,8 @@ async def generate_infographic(request: InfographicRequest):
             video_id=video_id,
             infographic_points=infographic_points,
             language=detected_language,
-            proxy_status=proxy_status
+            proxy_status=proxy_status,
+            num_points=len(infographic_points)
         )
 
     except ValueError as e:
