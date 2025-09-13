@@ -43,15 +43,15 @@ def extract_video_id(url: str) -> str:
 
 def get_youtube_transcript_api():
     """Initialize YouTube Transcript API with proxy configuration"""
-    PROXY_USERNAME = "labvizce-51"
+    PROXY_USERNAME = "labvizce99-21"
     PROXY_PASSWORD = "x2za3x15c9ah"
     PROXY_ENDPOINT = "p.webshare.io:80"
 
     try:
         # Configure proxy for requests session
         proxies = {
-            "http": "http://labvizce-51:x2za3x15c9ah@p.webshare.io:80/",
-            "https": "http://labvizce-51:x2za3x15c9ah@p.webshare.io:80/"
+            "http": "http://labvizce99-21:x2za3x15c9ah@p.webshare.io:80/",
+            "https": "http://labvizce99-21:x2za3x15c9ah@p.webshare.io:80/"
         }
 
         # Monkey patch requests to use proxy
